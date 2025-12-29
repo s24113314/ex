@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Stall View - Precision Darts</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        * { user-select: none; -webkit-user-drag: none; -webkit-tap-highlight-color: transparent; outline: none; }
+        body { 
+            margin: 0; 
+            background: #0f172a; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            width: 100vw; 
+            overflow: hidden; 
+        }
+
+        /* --- THE SCALING WRAPPER --- */
+        /* This locks the layout to exactly 1400x850 so nothing moves out of place */
+        #game-stage {
+            position: relative;
+            width: 1400px;
+            height: 850px;
+            background: #1e293b;
+            overflow: hidden;
+            transform-origin: center center;
+            flex-shrink: 0;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+        }
+
+        #custom-cursor {
+            position: fixed; width: 24px; height: 24px; pointer-events: none; z-index: 9999; display: none; transform: translate(-50%, -50%);
+        }
+        #custom-cursor::before, #custom-cursor::after {
+            content: ''; position: absolute; background: #ff69b4; border-radius: 2px; box-shadow: 0 0 8px #ff1493;
+        }
+        #custom-cursor::before { top: 50%; left: 0; width: 100%; height: 4px; transform: translateY(-50%); }
+        #custom-cursor::after { left: 50%; top: 0; width: 4px; height: 100%; transform: translateX(-50%); }
+
+        #dart-inventory { position: absolute; top: 20px; right: 30px; z-index: 100; pointer-events: none; }
+        .inventory-box {
+            background: rgba(15, 23, 42, 0.9); border: 2px solid #ef4444; padding: 10px 20px; border-radius: 12px;
+            display: flex; align-items: center; gap: 16px; color: white; font-family: 'Arial Black', sans-serif; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        #prize-tier-wrapper {
+            position: absolute; top: 240px; right: 60px; z-index: 50; pointer-events: none;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        
+        .prize-ladder {
+            width: 80px; height: 300px; background: rgba(0,0,0,0.8); border: 3px solid #5d4037; border-radius: 10px;
+            position: relative; display: flex; flex-direction: column-reverse; overflow: hidden;
+        }
+        .prize-fill-bar {
+            position: absolute; bottom: 0; width: 100%; 
+            background: linear-gradient(to top, #ef4444 0%, #ef4444 25%, #facc15 25%, #facc15 50%, #22c55e 50%, #22c55e 75%, #3b82f6 75%, #3b82f6 100%);
+            transition: height 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 1;
+        }
+        .prize-step {
+            flex: 1; border-top: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center;
+            font-size: 9px; color: white; font-weight: bold; text-transform: uppercase; z-index: 2; text-shadow: 1px 1px 2px black;
+            text-align: center;
+        }
+        .active-step { color: #ffffff; font-size: 11px; filter: drop-shadow(0 0 8px white); background: rgba(255,255,255,0.15); }
+
+        .flying-dart { position: fixed; width: 60px; height: 20px; pointer-events: none; z-index: 500; transition: all 0.3s ease-out; }
+        .dart-falling { transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important; transform: translate(-50%, 0) rotate(120deg) scale(0.6) !important; top: 120% !important; opacity: 0; }
+        .sticky-dart { position: absolute; width: 40px; height: 12px; pointer-events: none; z-index: 1; transform-origin: 100% 50%; }
+
+        .night-sky { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; background: radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%); overflow: hidden; }
+        .star { position: absolute; border-radius: 50%; pointer-events: none; opacity: 0.5; }
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.1); }
+        }
+
+        .stall-bg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
+        
+        /* FIXED PIXELS to remove the "Gap" and stop drifting */
+        .balloon-board-physical { 
+            position: absolute; 
+            top: 115px; 
+            bottom: 155px; 
+            left: 280px; 
+            right: 220px; 
+            background: #c4a484; border: 15px solid #5d4037; border-bottom: none; 
+            box-shadow: inset 0 0 100px rgba(0,0,0,0.2); z-index: 1; 
+            display: flex; justify-content: center; align-items: center; 
+            gap: 40px; padding: 40px; cursor: none; 
+            overflow: visible;
+        }
+
+        .portrait-frame { flex: 1; height: 380px; border: 6px solid #5d4037; background: rgba(255, 255, 255, 0.05); box-shadow: 0 5px 15px rgba(0,0,0,0.2); border-radius: 4px; flex-shrink: 0; z-index: 6; position: relative; overflow: hidden; }
+        
+        .dart-background-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; overflow: hidden; }
+        
+        .internal-balloon-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(6, 1fr); width: 100%; height: 100%; padding: 5px; box-sizing: border-box; gap: 2px; position: relative; z-index: 7; }
+        .dual-circle-layout { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-around; align-items: center; z-index: 7; }
+        .cluster-unit { position: relative; width: 100%; height: 50%; display: flex; justify-content: center; align-items: center; }
+        .rotation-engine { position: absolute; width: 100%; height: 100%; animation: clock-spin 4.5s linear infinite; transform-origin: center center; display: flex; justify-content: center; align-items: center; }
+        @keyframes clock-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .clock-hand { position: absolute; width: 2px; height: 44px; background: #3e2723; transform-origin: bottom center; bottom: 50%; display: flex; flex-direction: column; align-items: center; z-index: 5; }
+        .balloon-wrap { cursor: none; display: flex; justify-content: center; align-items: center; transition: transform 0.1s; position: relative; width: 100%; height: 100%; }
+        .balloon-wrap svg { width: 100%; height: 130%; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2)); }
+        .attached-balloon { width: 36px; height: 48px; margin-top: -42px; z-index: 10; }
+        .center-balloon { position: absolute; width: 38px; height: 52px; z-index: 11; }
+        
+        /* AUNTIE: Fixed Bottom to stop her from moving/lowering */
+        .auntie-wrapper { 
+            position: absolute; 
+            bottom: 50px; 
+            left: 0; 
+            width: 350px; 
+            height: 500px; 
+            transform: scale(0.95) translateX(-10%); 
+            transform-origin: bottom left; 
+            z-index: 8; pointer-events: none; 
+        }
+        .speech-bubble {
+            position: absolute; top: 40px; right: -120px; background: white; border-radius: 20px; padding: 12px 18px;
+            width: 190px; font-family: 'Arial', sans-serif; font-weight: bold; font-size: 14px; color: #1e293b;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3); opacity: 0; transform: scale(0.8); transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-align: center; border: 3px solid #7e22ce; z-index: 100;
+        }
+        .speech-bubble::after {
+            content: ''; position: absolute; left: -15px; top: 50%; transform: translateY(-50%);
+            border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-right: 15px solid white;
+        }
+        .bubble-visible { opacity: 1; transform: scale(1); }
+
+        #dart-table-root { position: absolute; bottom: 0; width: 100%; height: 224px; z-index: 40; }
+
+        .side-prize-rail {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 80px;
+            display: flex; flex-direction: column; align-items: center;
+            z-index: 1000; pointer-events: none;
+        }
+        /* RAIL POSITIONS: Kept on the dark brown edges exactly */
+        #left-rail { left: -65px; }
+        #right-rail { right: -65px; }
+
+        .prize-stack-container {
+            display: flex; flex-direction: column; 
+            justify-content: space-between;
+            align-items: center; height: 100%; width: 100%;
+            padding: 20px 0;
+        }
+        .prize-stack-container > svg { transform: scale(1.1); flex-shrink: 0; }
+
+        #start-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.85); z-index: 20000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .wood-sign {
+            position: relative; background: #5d4037; border: 8px solid #3e2723; border-radius: 12px; padding: 40px; width: 500px;
+            color: #fef3c7; font-family: 'Arial Rounded MT Bold', sans-serif; text-align: center;
+        }
+        .play-btn {
+            margin-top: 30px; background: #facc15; color: #1e293b; font-weight: 900; padding: 15px 50px;
+            border-radius: 50px; font-size: 24px; cursor: pointer; text-transform: uppercase; border: none;
+        }
+
+        .footer-tag {
+            position: fixed; bottom: 3px; width: 100%; text-align: center;
+            color: rgba(255,255,255,0.4); font-family: Arial, sans-serif; font-size: 12px; z-index: 50; pointer-events: none;
+        }
+
+        #music-toggle {
+            position: fixed; top: 20px; left: 20px; z-index: 25000;
+            background: rgba(15, 23, 42, 0.8); border: 2px solid #facc15;
+            color: #facc15; width: 45px; height: 45px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+        }
+    </style>
+</head>
+<body onclick="handleGlobalMiss(event)">
+
+<div id="game-stage">
+    <div class="night-sky" id="nightSky"></div>
+    
+    <div class="stall-bg-layer">
+        <svg width="100%" height="100%" viewBox="0 0 1000 600" preserveAspectRatio="none">
+            <defs>
+                <pattern id="stripes" x="0" y="0" width="100" height="100" patternUnits="userSpaceOnUse">
+                    <rect width="50" height="100" fill="#dc2626" /><rect x="50" width="50" height="100" fill="#ffffff" />
+                </pattern>
+            </defs>
+            <path d="M0 0 H1000 V100 Q975 140 950 100 Q925 140 900 100 Q875 140 850 100 Q825 140 800 100 Q775 140 750 100 Q725 140 700 100 Q675 140 650 100 Q625 140 600 100 Q575 140 550 100 Q525 140 500 100 Q475 140 450 100 Q425 140 400 100 Q375 140 350 100 Q325 140 300 100 Q275 140 250 100 Q225 140 200 100 Q175 140 150 100 Q125 140 100 100 Q75 140 50 100 Q25 140 0 100 Z" fill="url(#stripes)" />
+        </svg>
+    </div>
+
+    <div class="balloon-board-physical" id="gameBoard">
+        <div id="left-rail" class="side-prize-rail"></div>
+        <div id="right-rail" class="side-prize-rail"></div>
+
+        <div class="portrait-frame">
+            <div class="dart-background-layer" id="bg-layer-1"></div>
+            <div class="internal-balloon-grid" id="grid-1"></div>
+        </div>
+        <div class="portrait-frame">
+            <div class="dart-background-layer" id="bg-layer-2"></div>
+            <div class="dual-circle-layout" id="frame-2"></div>
+        </div>
+        <div class="portrait-frame">
+            <div class="dart-background-layer" id="bg-layer-3"></div>
+            <div class="internal-balloon-grid" id="grid-3"></div>
+        </div>
+        <div class="portrait-frame">
+            <div class="dart-background-layer" id="bg-layer-4"></div>
+            <div class="dual-circle-layout" id="frame-4"></div>
+        </div>
+    </div>
+
+    <div class="auntie-wrapper">
+        <div class="speech-bubble" id="auntie-bubble"></div>
+        <svg viewBox="0 0 300 450" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="ariSkin" cx="50%" cy="40%" r="65%"><stop offset="0%" stop-color="#ffeedd" /><stop offset="70%" stop-color="#f7d3ba" /><stop offset="100%" stop-color="#d99b7e" /></radialGradient>
+              <linearGradient id="ariHair" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#4a3121" /><stop offset="50%" stop-color="#2a1a10" /><stop offset="100%" stop-color="#120a06" /></linearGradient>
+              <pattern id="dusterPattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="10" fill="#fef08a" opacity="0.1" /><path d="M5 5 L15 15 M5 15 L15 5" stroke="#9333ea" stroke-width="1" opacity="0.1" /></pattern>
+              <linearGradient id="dusterGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#7e22ce" /><stop offset="100%" stop-color="#581c87" /></linearGradient>
+            </defs>
+            <path d="M150 70 C190 60 230 100 230 200 C230 300 200 400 170 430" fill="url(#ariHair)" opacity="0.9" />
+            <path d="M90 100 C90 50 210 50 210 100 C210 130 180 145 150 145 C120 145 90 130 90 100" fill="url(#ariHair)" />
+            <g opacity="0.9"><path d="M100 230 Q85 260 90 300" stroke="#f7d3ba" stroke-width="14" fill="none" stroke-linecap="round" /><path d="M200 230 Q215 260 210 300" stroke="#f7d3ba" stroke-width="14" fill="none" stroke-linecap="round" /></g>
+            <path d="M130 190 Q150 210 170 190 L165 220 L135 220 Z" fill="#f7d3ba" />
+            <path d="M105 110 C105 85 195 85 195 110 C195 170 180 205 150 205 C120 205 105 170 105 110 Z" fill="url(#ariSkin)" />
+            <g>
+              <path d="M115 138 Q125 132 138 138 Q125 142 115 138 Z" fill="#fff" /><circle cx="128" cy="138" r="4" fill="#3e2723" /><circle cx="129" cy="137" r="1" fill="white" opacity="0.8" /><path d="M112 136 L142 134" stroke="black" stroke-width="2" fill="none" stroke-linecap="round" />
+              <path d="M162 138 Q175 132 185 138 Q175 142 162 138 Z" fill="#fff" /><circle cx="172" cy="138" r="4" fill="#3e2723" /><circle cx="173" cy="137" r="1" fill="white" opacity="0.8" /><path d="M158 134 L188 136" stroke="black" stroke-width="2" fill="none" stroke-linecap="round" />
+            </g>
+            <path d="M147 166 Q150 171 153 166" stroke="#d99b7e" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7" />
+            <path d="M115 120 Q130 112 145 122" stroke="#2a1a10" stroke-width="1.5" fill="none" opacity="0.5" />
+            <path d="M155 122 Q170 112 185 120" stroke="#2a1a10" stroke-width="1.5" fill="none" opacity="0.5" />
+            <path d="M138 185 Q150 192 162 185 Q150 187 138 185" fill="#f4a7a7" stroke="#9d174d" stroke-width="0.5" />
+            <g><path d="M100 220 L200 220 L240 450 L60 450 Z" fill="url(#dusterGrad)" /><path d="M100 220 L200 220 L240 450 L60 450 Z" fill="url(#dusterPattern)" /><path d="M150 220 L150 450" stroke="rgba(0,0,0,0.15)" stroke-width="2" fill="none" /><circle cx="150" cy="280" r="2.5" fill="rgba(255,255,255,0.2)" /><circle cx="150" cy="330" r="2.5" fill="rgba(255,255,255,0.2)" /><circle cx="150" cy="380" r="2.5" fill="rgba(255,255,255,0.2)" /></g>
+        </svg>
+    </div>
+    <div id="dart-table-root"></div>
+</div>
+
+<!-- SCRIPTS REMAIN UNCHANGED IN LOGIC -->
+<script type="text/babel">
+    const { useMemo } = React;
+    const mulberry32 = (a) => () => { let t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    
+    // ASSETS
+    const StuffedElephant = ({scale=1}) => (<svg viewBox="0 0 120 160" className={`w-16 h-24`} style={{transform: `scale(${scale})` }}><ellipse cx="20" cy="80" rx="25" ry="35" fill="#94a3b8" /><ellipse cx="100" cy="80" rx="25" ry="35" fill="#94a3b8" /><ellipse cx="22" cy="80" rx="15" ry="25" fill="#fbcfe8" opacity="0.4" /><ellipse cx="98" cy="80" rx="15" ry="25" fill="#fbcfe8" opacity="0.4" /><ellipse cx="60" cy="120" rx="45" ry="40" fill="#94a3b8" /><circle cx="60" cy="85" r="40" fill="#94a3b8" /><circle cx="45" cy="80" r="4" fill="#1e1b4b" /><circle cx="75" cy="80" r="4" fill="#1e1b4b" /></svg>);
+    const StuffedDog = ({scale=1}) => (<svg viewBox="0 0 120 160" className={`w-16 h-24`} style={{transform: `scale(${scale})` }}><path d="M15 40 Q-10 40 0 85 Q5 110 25 95 Z" fill="#78350f" /><path d="M105 40 Q130 40 120 85 Q115 110 95 95 Z" fill="#78350f" /><ellipse cx="60" cy="115" rx="48" ry="42" fill="#d97706" /><circle cx="60" cy="55" r="42" fill="#78350f" /><circle cx="45" cy="60" r="7" fill="#1e1b4b" /><circle cx="75" cy="60" r="7" fill="#1e1b4b" /></svg>);
+    const StuffedChase = ({scale=1}) => (<svg viewBox="0 0 120 160" className={`w-16 h-24`} style={{transform: `scale(${scale})` }}><ellipse cx="60" cy="120" rx="45" ry="40" fill="#1e40af" /><circle cx="60" cy="65" r="42" fill="#78350f" /><path d="M25 45 Q60 25 95 45 L90 55 L30 55 Z" fill="#1e3a8a" /><circle cx="48" cy="70" r="4.5" fill="#1e1b4b" /><circle cx="72" cy="70" r="4.5" fill="#1e1b4b" /></svg>);
+    const StuffedWhale = ({scale=1}) => (<svg viewBox="0 0 120 160" className={`w-16 h-24`} style={{transform: `scale(${scale})` }}><ellipse cx="60" cy="85" rx="50" ry="45" fill="#60a5fa" /><ellipse cx="60" cy="105" rx="40" ry="25" fill="#fff" opacity="0.9" /><circle cx="40" cy="80" r="4" fill="#1e1b4b" /><circle cx="80" cy="80" r="4" fill="#1e1b4b" /></svg>);
+    const StuffedShark = ({scale=1}) => (<svg viewBox="0 0 120 160" className={`w-16 h-24`} style={{transform: `scale(${scale})` }}><path d="M50 40 Q75 10 90 40 Z" fill="#64748b" /><ellipse cx="60" cy="95" rx="55" ry="45" fill="#64748b" /><circle cx="40" cy="90" r="4.5" fill="#1e1b4b" /><circle cx="80" cy="90" r="4.5" fill="#1e1b4b" /></svg>);
+    const StuffedPenguin = ({scale=1}) => (<svg viewBox="0 0 120 160" className={`w-16 h-24`} style={{transform: `scale(${scale})` }}><ellipse cx="60" cy="95" rx="48" ry="58" fill="#000" /><ellipse cx="60" cy="105" rx="35" ry="45" fill="#fff" /><circle cx="45" cy="75" r="4.5" fill="#000" /><circle cx="75" cy="75" r="4.5" fill="#000" /><path d="M52 85 L68 85 L60 98 Z" fill="#fb923c" /></svg>);
+
+    window.StuffedWhale = StuffedWhale; window.StuffedShark = StuffedShark; window.StuffedElephant = StuffedElephant; window.StuffedPenguin = StuffedPenguin;
+
+    const PrizeStack = () => (
+        <div className="prize-stack-container">
+            <StuffedElephant /><StuffedDog /><StuffedChase /><StuffedWhale /><StuffedShark /><StuffedPenguin />
+        </div>
+    );
+
+    const InsideDart = ({ color }) => (
+        <svg width="10" height="32" viewBox="0 0 100 300"><path d="M5 80 L50 80 L5 0 L25 80 Z" fill={color} /><rect x="42" y="80" width="16" height="220" fill="#78350f" /></svg>
+    );
+
+    const DartTable = () => {
+      const toyTypes = ['duck', 'car', 'ball', 'robot', 'cat'];
+      const colors = ["#ef4444", "#3b82f6", "#22c55e", "#facc15", "#8b5cf6"];
+      const toyCollection = useMemo(() => {
+        const rand = mulberry32(12345);
+        return [...Array(150)].map(() => ({ type: toyTypes[Math.floor(rand()*5)], scale: 1.2+rand()*0.6, rot: (rand()-0.5)*20, y: -5-(rand()*20), x: -700+(rand()*1400), color: colors[Math.floor(rand()*5)], zIndex: 50+Math.floor(rand()*10) }));
+      }, []);
+      return (
+        <div className="absolute bottom-0 w-full h-56 flex flex-col items-center justify-end pointer-events-none">
+          <div className="relative w-full h-40 bg-amber-950 border-t-8 border-pink-700 flex flex-col items-center">
+            <div className="absolute top-[-36px] left-0 right-0 h-10 overflow-visible">
+                {toyCollection.map((toy, i) => (
+                    <div key={i} className="absolute" style={{ left: `calc(50% + ${toy.x}px)`, top: toy.y, transform: `rotate(${toy.rot}deg)`, zIndex: toy.zIndex }}><div style={{width: 30, height: 30, background: toy.color, borderRadius: '50%'}}></div></div>
+                ))}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('dart-table-root')).render(<DartTable />);
+    ReactDOM.createRoot(document.getElementById('left-rail')).render(<PrizeStack />);
+    ReactDOM.createRoot(document.getElementById('right-rail')).render(<PrizeStack />);
+</script>
+
+<script>
+    // AUTO-SCALE FUNCTION: This logic handles the different screen sizes
+    function resizeGame() {
+        const stage = document.getElementById('game-stage');
+        const designWidth = 1400;
+        const designHeight = 850;
+        const scale = Math.min(window.innerWidth / designWidth, window.innerHeight / designHeight);
+        stage.style.transform = `scale(${scale})`;
+    }
+    window.addEventListener('resize', resizeGame);
+    resizeGame();
+
+    // GAME LOGIC (Restored as is)
+    let dartsThrown = 0; let totalHits = 0; let gameStarted = false;
+    function startGame(e) { document.getElementById('start-screen').style.display = 'none'; gameStarted = true; }
+    function populateGrid(id) { const c = document.getElementById(id); for(let i=0;i<24;i++){ const w=document.createElement('div'); w.className='balloon-wrap'; w.innerHTML='<svg viewBox="0 0 100 135"><ellipse cx="50" cy="62" rx="36" ry="54" fill="red" /></svg>'; c.appendChild(w); }}
+    populateGrid('grid-1'); populateGrid('grid-3');
+</script>
+</body>
+</html>
